@@ -21,10 +21,14 @@ borderWidth = 3
 # Serial data port
 base_station = serial.Serial("COM1", 9600)
 
-# Variables that we will receive from Serial port
+# String that we will receive from Serial port
 base_station_data = ""
+# Place to store data that can be corrupted
 raw_data = []
+# Place to store data that doesn't have any corruptions in it
+# This is the data that will be used to split string to variables
 displayed_data = []
+# Variables from split data string
 receive_time = ""
 longitude = 0.0
 latitude = 0.0
@@ -45,14 +49,6 @@ data_altitude = []
 data_temperature = []
 data_humidity = []
 data_pressure = []
-
-
-def is_float(number):
-    try:
-        float(number)
-        return True
-    except ValueError:
-        return False
 
 
 class MainWindow(QWidget):
