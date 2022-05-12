@@ -1,5 +1,4 @@
 # PYQT
-from selectors import EpollSelector
 from PyQt5.QtWidgets import QApplication, QLabel, QWidget
 from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QBrush
 from PyQt5.QtCore import Qt, QTimer
@@ -12,14 +11,14 @@ import folium
 # Libraries
 import sys
 import threading
-import serial
+# import serial
 from random import randint
 
 borderColor = QColor(180, 180, 180)
 borderWidth = 3
 
 # Serial data port
-base_station = serial.Serial("COM1", 9600)
+#base_station = serial.Serial("COM3", 9600)
 
 # Variables that we will receive from Serial port
 base_station_data = ""
@@ -37,14 +36,14 @@ rssi = 0
 snr = 0
 
 # Lists for storing received data
-data_recieve_time = []
+data_recieve_time = [10.4, 11.4]
 data_longitude = []
 data_latitude = []
-data_speed = []
-data_altitude = []
-data_temperature = []
-data_humidity = []
-data_pressure = []
+data_speed = [23.4, 34.5]
+data_altitude = [123.56, 125.78]
+data_temperature = [23.1, 32.1]
+data_humidity = [43.5, 54.3]
+data_pressure = [100321, 100432]
 
 
 def is_float(number):
@@ -63,6 +62,10 @@ class MainWindow(QWidget):
         self.top = 50
         self.width = 1500
         self.height = 900
+        self.qTimer = QTimer()
+        self.qTimer.setInterval(50)
+        self.qTimer.start()
+        self.qTimer.timeout.connect(self.update_plot_data)
         self.initUI()
 
     def initUI(self):
@@ -73,7 +76,7 @@ class MainWindow(QWidget):
         # Here you can change colour of the background
         p.setColor(self.backgroundRole(), QColor(120, 120, 120))
         self.setPalette(p)
-
+        
         # Temperature
         self.label_temperature = QLabel(self)
         self.label_temperature.setText("Temperature")
@@ -91,8 +94,8 @@ class MainWindow(QWidget):
 
         # Colour and width of data line in plot
         data_pen = pg.mkPen(color=(255, 7, 58), width=3)
-        self.dataLine_temperature = self.graphWidget_temperature.plot(data_recieve_time, data_temperature, pen=data_pen)
-
+        self.dataLine_temperature = self.graphWidget_temperature.plot(x=data_recieve_time, y=data_temperature, pen=data_pen)
+        
         # Humidity
         self.label_humidity = QLabel(self)
         self.label_humidity.setText("Humidity")
@@ -107,7 +110,7 @@ class MainWindow(QWidget):
         self.graphWidget_humidity.setYRange(0, 100, padding=0.04)
 
         data_pen = pg.mkPen(color=(255, 237, 39), width=3)
-        self.dataLine_humidity = self.graphWidget_humidity.plot(data_recieve_time, data_humidity, pen=data_pen)
+        self.dataLine_humidity = self.graphWidget_humidity.plot(data_humidity, pen=data_pen)
 
         # Air Pressure
         self.label_pressure = QLabel(self)
@@ -123,7 +126,7 @@ class MainWindow(QWidget):
         self.graphWidget_pressure.setYRange(700000, 1100000, padding=0.04)
 
         data_pen = pg.mkPen(color=(0, 200, 255), width=3)
-        self.dataLine_pressure = self.graphWidget_pressure.plot(data_recieve_time, data_pressure, pen=data_pen)
+        self.dataLine_pressure = self.graphWidget_pressure.plot(data_pressure, pen=data_pen)
 
         # Altitude
         self.label_altitude = QLabel(self)
@@ -139,7 +142,7 @@ class MainWindow(QWidget):
         self.graphWidget_altitude.setYRange(0, 2000, padding=0.04)
 
         data_pen = pg.mkPen(color=(57, 255, 20), width=3)
-        self.dataLine_altitude = self.graphWidget_altitude.plot(data_recieve_time, data_altitude, pen=data_pen)
+        self.dataLine_altitude = self.graphWidget_altitude.plot(data_altitude, pen=data_pen)
 
         # Speed
         self.label_speed = QLabel(self)
@@ -155,7 +158,7 @@ class MainWindow(QWidget):
         self.graphWidget_speed.setYRange(0, 2000, padding=0.04)
 
         data_pen = pg.mkPen(color=(57, 255, 20), width=3)
-        self.dataLine_speed = self.graphWidget_speed.plot(data_recieve_time, data_speed, pen=data_pen)
+        self.dataLine_speed = self.graphWidget_speed.plot(data_speed, pen=data_pen)
 
         # Display everything
         self.show()
@@ -224,22 +227,26 @@ def isDataOK():
 def appendDataLists():
     global data_recieve_time, data_longitude, data_latitude, data_speed, data_altitude, data_temperature, data_humidity, data_pressure
     data = displayed_data[-1].split(",")
-    data_recieve_time = data[0]
-    data_longitude = data[1]
-    data_latitude = data[2]
-    data_speed = data[3]
-    data_altitude = data[4]
-    data_temperature = data[5]
-    data_humidity = data[6]
-    data_pressure = data[7]
+    data_recieve_time.append(float(data[0]))
+    data_longitude.append(float(data[1]))
+    data_latitude.append(float(data[2]))
+    data_speed.append(float(data[3]))
+    data_altitude.append(float(data[4]))
+    data_temperature.append(float(data[5]))
+    data_humidity.append(float(data[6]))
+    data_pressure.append(float(data[7]))
+    print(data)
+    print(data_recieve_time, data_longitude, data_latitude, data_speed, data_altitude, data_temperature, data_humidity, data_pressure)
 
 # Reads data from Serial port, if data isn't corruptedm append it
 # to both data lists, and split data and save it to lists to update the graphs
 
 
 def serialDataFunction():
-    while True:
-        base_station_data = str(base_station.readline())
+    #while True:
+        #base_station_data = str(base_station.readline())
+        #base_station_data = str(input("Dati: "))
+        base_station_data = "12.2,57.533957,25.425450,10.40,120.42,23.45,43.53,100345"
         if isDataOK():
             raw_data.append(base_station_data)
             displayed_data.append(base_station_data)
@@ -252,8 +259,8 @@ def serialDataFunction():
 if __name__ == "__main__":
     # Starts the function in background that monitors
     # serial port for any new data
-    serialThread = threading.Thread(target=serialDataFunction)
-    serialThread.start()
-
+    #serialThread = threading.Thread(target=serialDataFunction)
+    #serialThread.start()
+    serialDataFunction()
     # Runs the rest of the programm
     main()
