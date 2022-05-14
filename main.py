@@ -1,11 +1,17 @@
 # Required libaries
 # PyQt5 libaries
+from cmath import rect
+from fileinput import close
+from posixpath import split
+import PyQt5
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import QWidget, QGridLayout
 from PyQt5.QtCore import QTimer
 from pyqtgraph import AxisItem
 from pyqtgraph import QtWidgets
 import pyqtgraph as pg
+from QSwitchControl import SwitchControl
+from PyQt5.QtWebEngineWidgets import QWebEngineView
 
 # Rest of the libaries
 import numpy
@@ -16,6 +22,10 @@ import random
 from datetime import datetime, timedelta
 import time
 from time import mktime
+import folium
+import io
+from jinja2 import Template
+
 
 # String for receiving serial data
 base_station_data = ""
@@ -32,9 +42,6 @@ displayed_data = []
 # Serial port being uses
 # The new school laptop uses COM4, my computer uses COM8
 com_port = "COM8"
-
-# Is serial communication used? Intended for testing purposes
-com_used = True
 
 
 # This class makes it possible for graphs to display time as x-axis
@@ -159,6 +166,7 @@ class DateAxisItem(AxisItem):
         return ret
 
     def attachToPlotItem(self, plotItem):
+        pen_line = pg.mkPen(color=(0, 0, 0), width=3)
         self.setParentItem(plotItem)
         viewBox = plotItem.getViewBox()
         self.linkToView(viewBox)
@@ -168,6 +176,7 @@ class DateAxisItem(AxisItem):
         pos = plotItem.axes[self.orientation]['pos']
         plotItem.layout.addItem(self, *pos)
         self.setZValue(-1000)
+        plotItem.getAxis('bottom').setPen(pen_line)
 
     def detachFromPlotItem(self):
         raise NotImplementedError()  # TODO
@@ -186,6 +195,15 @@ class Window(QWidget):
         self.data_humid = []
         self.data_alt = []
         self.data_press = []
+        self.data_eco2 = []
+        self.data_co2 = []
+        self.data_tvoc = []
+        self.data_no2 = []
+        self.data_pm10 = []
+        self.data_pm25 = []
+        self.data_pm100 = []
+        self.data_rssi = []
+        self.data_snr = []
 
         # Starts a timer that updates lists and the graphs every second
         self.qTimer = QTimer()
@@ -207,6 +225,13 @@ class Window(QWidget):
         self.data_alt.append(random.uniform(0, 1000))
         self.data_press.append(random.randint(900, 1200))
         self.data_speed.append(random.uniform(0, 30))
+        self.data_eco2.append(random.randint(0, 50000))
+        self.data_co2.append(random.randint(0, 30000))
+        self.data_tvoc.append(random.randint(0, 1000))
+        self.data_no2.append(random.uniform(0, 10))
+        self.data_pm10.append(random.uniform(0, 1000))
+        self.data_pm25.append(random.uniform(0, 1000))
+        self.data_pm100.append(random.uniform(0, 1000))
 
         # Updates all graphs with the new data
         self.temp_plot.setData(self.timestamps, self.data_temp)
@@ -214,19 +239,25 @@ class Window(QWidget):
         self.humid_plot.setData(self.timestamps, self.data_humid)
         self.alt_plot.setData(self.timestamps, self.data_alt)
         self.spd_plot.setData(self.timestamps, self.data_speed)
+        self.co2_plot_line.setData(self.timestamps, self.data_co2)
+        self.eco2_plot_line.setData(self.timestamps, self.data_eco2)
+        self.no2_plot_line.setData(self.timestamps, self.data_no2)
+        self.pm10_plot_line.setData(self.timestamps, self.data_pm10)
+        self.pm25_plot_line.setData(self.timestamps, self.data_pm25)
+        self.pm100_plot_line.setData(self.timestamps, self.data_pm100)
 
         # Prints all of the appended data
-        self.raw_console.append(self.timestamps[-1], self.data_temp[-1], self.data_humid[-1], self.data_alt[-1], self.data_press[-1], self.data_speed[-1])
-        self.displayed_console.append(self.timestamps[-1], self.data_temp[-1], self.data_humid[-1], self.data_alt[-1], self.data_press[-1], self.data_speed[-1])
+        #self.raw_console.append(self.timestamps[-1], self.data_temp[-1], self.data_humid[-1], self.data_alt[-1], self.data_press[-1], self.data_speed[-1])
+        #self.displayed_console.append(self.timestamps[-1], self.data_temp[-1], self.data_humid[-1], self.data_alt[-1], self.data_press[-1], self.data_speed[-1])
 
     # For use with base station itself
     # For this function to work it needs to be set above in qTimer.timeout
     # and also base station has to be connected to PC and
     # Cansat has to be transmitting data
     def update_data_real(self):
-        # Splits last received data
-        split_data = displayed_data[-1].split(",")
         try:
+            # Splits last received data
+            split_data = displayed_data[-1].split(",")
             # Converts every data unit to float
             split_data = [float(x) for x in split_data]
             # Gets time when data was received
@@ -239,8 +270,17 @@ class Window(QWidget):
             self.data_temp.append(split_data[4])
             self.data_humid.append(split_data[5])
             self.data_press.append(split_data[6])
+            self.data_eco2.append(split_data[7])
+            self.data_co2.append(split_data[8])
+            self.data_tvoc.append(split_data[9])
+            self.data_no2.append(split_data[10])
+            self.data_pm10.append(split_data[11])
+            self.data_pm25.append(split_data[12])
+            self.data_pm100.append(split_data[13])
+            self.data_rssi.append(split_data[14])
+            self.data_snr.append(split_data[15])
 
-            # makes sure that it doesn't try to change data to lists with no values
+            # Makes sure that it doesn't try to change data to lists with no values
             if len(self.data_latitude) > 0:
                 # Updates all graphs with new data
                 self.temp_plot.setData(self.timestamps, self.data_temp)
@@ -248,17 +288,59 @@ class Window(QWidget):
                 self.humid_plot.setData(self.timestamps, self.data_humid)
                 self.alt_plot.setData(self.timestamps, self.data_alt)
                 self.spd_plot.setData(self.timestamps, self.data_speed)
+                self.co2_plot_line.setData(self.timestamps, self.data_co2)
+                self.eco2_plot_line.setData(self.timestamps, self.data_eco2)
+                self.tvoc_plot_line.setData(self.timestamps, self.data_tvoc)
+                self.no2_plot_line.setData(self.timestamps, self.data_no2)
+                self.pm10_plot_line.setData(self.timestamps, self.data_pm10)
+                self.pm25_plot_line.setData(self.timestamps, self.data_pm25)
+                self.pm100_plot_line.setData(self.timestamps, self.data_pm100)
+                # If GPS signal is acquired add a marker in the map
+                if int(self.data_latitude[-1]) != 0:
+                    self.add_marker()
+
                 # Prints received data to consoles in app
                 self.raw_console.append(raw_data[-1])
                 self.displayed_console.append(displayed_data[-1])
         except:
             pass
 
+    # Function that can put a marker on map
+    def add_marker(self):
+        print(self.data_latitude[-1], self.data_longitude[-1])
+        js = Template(
+            """
+        L.marker([{{latitude}}, {{longitude}}] )
+            .addTo({{map}});
+        L.circleMarker(
+            [{{latitude}}, {{longitude}}], {
+                "bubblingMouseEvents": true,
+                "color": "#3388ff",
+                "dashArray": null,
+                "dashOffset": null,
+                "fill": false,
+                "fillColor": "#3388ff",
+                "fillOpacity": 0.2,
+                "fillRule": "evenodd",
+                "lineCap": "round",
+                "lineJoin": "round",
+                "opacity": 1.0,
+                "radius": 2,
+                "stroke": true,
+                "weight": 5
+            }
+        ).addTo({{map}});
+        """
+        ).render(map=self.map.get_name(), latitude=self.data_latitude[-1], longitude=self.data_longitude[-1])
+        self.mapView.page().runJavaScript(js)
+
+    # Function that adds all gui elements
     def initUI(self):
         grid = QGridLayout()
         self.setLayout(grid)
         self.setWindowTitle("Base station data")
         self.setAutoFillBackground(True)
+        pg.setConfigOptions(antialias=True)
         p = self.palette()
         # Here it is possible to change background colour of app
         p.setColor(self.backgroundRole(), QColor(255, 255, 255))
@@ -269,8 +351,17 @@ class Window(QWidget):
         self.displayed_console = QtWidgets.QTextEdit()
 
         # Makes consoles wider
-        self.raw_console.setFixedWidth(500)
-        self.displayed_console.setFixedWidth(500)
+        self.raw_console.setFixedWidth(700)
+        self.displayed_console.setFixedWidth(700)
+        self.raw_console.setFixedHeight(200)
+
+        # Creater a map to display GPS coordinates
+        self.map = folium.Map(location=[57.53351885176165, 25.425357529068794], zoom_start=11, control_scale=True)
+        folium.LayerControl().add_to(self.map)
+        self.data = io.BytesIO()
+        self.map.save(self.data, close_file=False)
+        self.mapView = QWebEngineView()
+        self.mapView.setHtml(self.data.getvalue().decode())
 
         # Creates graph widgets
         self.temperature_plot = pg.PlotWidget()
@@ -278,6 +369,10 @@ class Window(QWidget):
         self.humidity_plot = pg.PlotWidget()
         self.altitude_plot = pg.PlotWidget()
         self.speed_plot = pg.PlotWidget()
+        self.co2_plot = pg.PlotWidget()
+        self.tvoc_plot = pg.PlotWidget()
+        self.no2_plot = pg.PlotWidget()
+        self.pms_plot = pg.PlotWidget()
 
         # Sets y-axis labels
         self.temperature_plot.setLabel(axis="left", text="Temperature, Celsius")
@@ -285,6 +380,10 @@ class Window(QWidget):
         self.humidity_plot.setLabel(axis="left", text="Humidity, %")
         self.altitude_plot.setLabel(axis="left", text="Altitude, meters")
         self.speed_plot.setLabel(axis="left", text="Speed, km/h")
+        self.co2_plot.setLabel(axis="left", text="Co2 concentration, ppm")
+        self.tvoc_plot.setLabel(axis="left", text="TVOC concentration, ppm")
+        self.no2_plot.setLabel(axis="left", text="NO2 concentration, ppm")
+        self.pms_plot.setLabel(axis="left", text="Fine particles, ppm")
 
         # Changes background of graphs to the same colour as app
         self.temperature_plot.setBackground(None)
@@ -292,6 +391,27 @@ class Window(QWidget):
         self.humidity_plot.setBackground(None)
         self.altitude_plot.setBackground(None)
         self.speed_plot.setBackground(None)
+        self.co2_plot.setBackground(None)
+        self.tvoc_plot.setBackground(None)
+        self.no2_plot.setBackground(None)
+        self.pms_plot.setBackground(None)
+
+        # Adds legends
+        self.co2_plot.addLegend()
+        self.pms_plot.addLegend()
+
+        # Changes y-axis colour to black and makes lines wider
+        # To change x-axis colour, check attachToPlotItem funtion in DateAxis class
+        pen_line = pg.mkPen(color=(0, 0, 0), width=3)
+        self.temperature_plot.plotItem.getAxis('left').setPen(pen_line)
+        self.pressure_plot.plotItem.getAxis('left').setPen(pen_line)
+        self.humidity_plot.plotItem.getAxis('left').setPen(pen_line)
+        self.altitude_plot.plotItem.getAxis('left').setPen(pen_line)
+        self.speed_plot.plotItem.getAxis('left').setPen(pen_line)
+        self.co2_plot.plotItem.getAxis('left').setPen(pen_line)
+        self.tvoc_plot.plotItem.getAxis('left').setPen(pen_line)
+        self.no2_plot.plotItem.getAxis('left').setPen(pen_line)
+        self.pms_plot.plotItem.getAxis('left').setPen(pen_line)
 
         # Add the Date-time axis to each graph
         axis1 = DateAxisItem(orientation='bottom')
@@ -309,36 +429,66 @@ class Window(QWidget):
         axis5 = DateAxisItem(orientation='bottom')
         axis5.attachToPlotItem(self.speed_plot.getPlotItem())
 
+        axis6 = DateAxisItem(orientation='bottom')
+        axis6.attachToPlotItem(self.co2_plot.getPlotItem())
+
+        axis7 = DateAxisItem(orientation='bottom')
+        axis7.attachToPlotItem(self.no2_plot.getPlotItem())
+
+        axis8 = DateAxisItem(orientation='bottom')
+        axis8.attachToPlotItem(self.pms_plot.getPlotItem())
+
+        axis9 = DateAxisItem(orientation='bottom')
+        axis9.attachToPlotItem(self.tvoc_plot.getPlotItem())
+
         # Plots data to graphs
-        self.temp_plot = self.temperature_plot.plot(x=self.timestamps, y=self.data_temp, symbol='o')
+        self.temp_plot = self.temperature_plot.plot(x=self.timestamps, y=self.data_temp, pen=pg.mkPen('b', width=5))
 
-        self.press_plot = self.pressure_plot.plot(x=self.timestamps, y=self.data_press, symbol='o')
+        self.press_plot = self.pressure_plot.plot(x=self.timestamps, y=self.data_press, pen=pg.mkPen('b', width=5))
 
-        self.humid_plot = self.humidity_plot.plot(x=self.timestamps, y=self.data_humid, symbol='o')
+        self.humid_plot = self.humidity_plot.plot(x=self.timestamps, y=self.data_humid, pen=pg.mkPen('b', width=5))
 
-        self.alt_plot = self.altitude_plot.plot(x=self.timestamps, y=self.data_alt, symbol='o')
+        self.alt_plot = self.altitude_plot.plot(x=self.timestamps, y=self.data_alt, pen=pg.mkPen('b', width=5))
 
-        self.spd_plot = self.speed_plot.plot(x=self.timestamps, y=self.data_speed, symbol='o')
+        self.spd_plot = self.speed_plot.plot(x=self.timestamps, y=self.data_speed, pen=pg.mkPen('b', width=5))
+
+        self.co2_plot_line = self.co2_plot.plot(x=self.timestamps, y=self.data_co2, name="CO2", pen=pg.mkPen('b', width=5))
+        self.eco2_plot_line = self.co2_plot.plot(x=self.timestamps, y=self.data_eco2, name="eCO2", pen=pg.mkPen('g', width=5))
+
+        self.tvoc_plot_line = self.tvoc_plot.plot(x=self.timestamps, y=self.data_tvoc, pen=pg.mkPen('b', width=5))
+
+        self.no2_plot_line = self.no2_plot.plot(x=self.timestamps, y=self.data_no2, pen=pg.mkPen('b', width=5))
+
+        self.pm10_plot_line = self.pms_plot.plot(x=self.timestamps, y=self.data_pm10, name="PM10", pen=pg.mkPen('b', width=5))
+        self.pm25_plot_line = self.pms_plot.plot(x=self.timestamps, y=self.data_pm25, name="PM25", pen=pg.mkPen('g', width=5))
+        self.pm100_plot_line = self.pms_plot.plot(x=self.timestamps, y=self.data_pm100, name="PM100", pen=pg.mkPen('r', width=5))
 
         # Adds all widgets to grid
         grid.addWidget(self.temperature_plot, 0, 0)
         grid.addWidget(self.pressure_plot, 1, 0)
         grid.addWidget(self.humidity_plot, 2, 0)
-        grid.addWidget(self.altitude_plot, 3, 0)
-        grid.addWidget(self.speed_plot, 4, 0)
-        grid.addWidget(self.raw_console, 0, 1)
-        grid.addWidget(self.displayed_console, 1, 1)
+
+        grid.addWidget(self.speed_plot, 0, 1)
+        grid.addWidget(self.altitude_plot, 1, 1)
+        grid.addWidget(self.co2_plot, 2, 1)
+
+        grid.addWidget(self.tvoc_plot, 0, 2)
+        grid.addWidget(self.no2_plot, 1, 2)
+        grid.addWidget(self.pms_plot, 2, 2)
+
+        grid.addWidget(self.raw_console, 3, 2)
+        grid.addWidget(self.displayed_console, 4, 2)
+        grid.addWidget(self.mapView, 3, 1)
 
         # Shows the ui
         self.show()
+
 
 # Checks if received data doesn't have symbols that it shouldn't have
 # Doesn't account if one number has changed to another one
 # If this check is required, then that has to be set in Cansats and Base station arduino code
 # But then we won't receive data if even one charecter has been corrupted
 # This way we still can receive data, even if not all of it can be used
-
-
 def isDataOK():
     allowed_chars = [",", ".", "$"]
     for char in base_station_data:
@@ -346,10 +496,10 @@ def isDataOK():
             return False
     return True
 
+
 # Connects to serial port and reads data from it
-
-
 def serialDataFunction():
+    base_station = None
     # Opens serial data port
     base_station = serial.Serial("COM8", 9600, timeout=2)
     while True:
@@ -362,7 +512,7 @@ def serialDataFunction():
             # It blocks function from progressing untill some data has been received
             base_station_data = str(base_station.readline())
             # Removes useless data from string
-            base_station_data = base_station_data[3:-6]
+            base_station_data = base_station_data[2:-6]
             # If data is not corrupted add data to both data lists
             if isDataOK():
                 raw_data.append(base_station_data)
@@ -383,13 +533,12 @@ def serialDataFunction():
 
 
 if __name__ == '__main__':
-    # If serial is used, starts a thread that runs in background and collects data from serial port
-    if com_used:
-        serialThread = threading.Thread(target=serialDataFunction, daemon=True)
-        serialThread.start()
     # Creates a new application process
     app = QtWidgets.QApplication([])
     # Creates the main window
     window = Window()
+    serialThread = threading.Thread(target=serialDataFunction, daemon=True)
+    serialThread.start()
     # If app is closed, stop running code
-    sys.exit(app.exec_())
+    ret = app.exec_()
+    sys.exit()
