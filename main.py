@@ -10,7 +10,6 @@ from PyQt5.QtCore import QTimer
 from pyqtgraph import AxisItem
 from pyqtgraph import QtWidgets
 import pyqtgraph as pg
-from QSwitchControl import SwitchControl
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 
 # Rest of the libaries
@@ -307,7 +306,6 @@ class Window(QWidget):
 
     # Function that can put a marker on map
     def add_marker(self):
-        print(self.data_latitude[-1], self.data_longitude[-1])
         js = Template(
             """
         L.marker([{{latitude}}, {{longitude}}] )
@@ -490,7 +488,7 @@ class Window(QWidget):
 # But then we won't receive data if even one charecter has been corrupted
 # This way we still can receive data, even if not all of it can be used
 def isDataOK():
-    allowed_chars = [",", ".", "$"]
+    allowed_chars = [",", "."]
     for char in base_station_data:
         if not (char.isdigit() or char in allowed_chars):
             return False
@@ -501,12 +499,12 @@ def isDataOK():
 def serialDataFunction():
     base_station = None
     # Opens serial data port
-    base_station = serial.Serial("COM8", 9600, timeout=2)
+    base_station = serial.Serial("COM8", 9600)
     while True:
         try:
             # If serial connection has been lost, tries to reconnect back
             if(base_station == None):
-                base_station = serial.Serial("COM8", 9600, timeout=2)
+                base_station = serial.Serial("COM8", 9600)
                 print("Reconnecting")
             # Reads data from serial port
             # It blocks function from progressing untill some data has been received
