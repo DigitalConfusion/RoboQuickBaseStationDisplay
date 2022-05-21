@@ -1,9 +1,5 @@
 # Required libaries
 # PyQt5 libaries
-from cmath import rect
-from fileinput import close
-from posixpath import split
-import PyQt5
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import QWidget, QGridLayout
 from PyQt5.QtCore import QTimer
@@ -15,6 +11,7 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView
 # Rest of the libaries
 import numpy
 import sys
+import os
 import threading
 import serial
 import random
@@ -23,6 +20,7 @@ import time
 from time import mktime
 import folium
 import io
+import csv
 from jinja2 import Template
 
 
@@ -40,8 +38,12 @@ displayed_data = []
 
 # Serial port being uses
 # The new school laptop uses COM4, my computer uses COM8
-com_port = "COM8"
+com_port = "COM4"
 
+file_name = f"data{random.randint(1000, 10000)}.csv"
+with open(file_name, "a", newline="", encoding="UTF8") as csv_f:
+           writer = csv.writer(csv_f)
+           writer.writerow(["Time","Latititude","Longitude","Speed","Altitude","Temp","Humidity","Pressure","eCO2","CO2","TVOC","NO2","PM10","PM25","PM100","RSSI","SNR"])
 
 # This class makes it possible for graphs to display time as x-axis
 # Don't touch this class, it works as it should.
@@ -213,42 +215,6 @@ class Window(QWidget):
         # Run the ui
         self.initUI()
 
-    # For testing purposes
-    # Can be used to generate random data for graphs to plot
-    # To use it change the function name in the qTimer.timeout to this function's name
-    def update_data_random(self):
-        # Appends random data to data lists
-        self.timestamps.append(time.time())
-        self.data_temp.append(random.uniform(0, 30))
-        self.data_humid.append(random.uniform(0, 100))
-        self.data_alt.append(random.uniform(0, 1000))
-        self.data_press.append(random.randint(900, 1200))
-        self.data_speed.append(random.uniform(0, 30))
-        self.data_eco2.append(random.randint(0, 50000))
-        self.data_co2.append(random.randint(0, 30000))
-        self.data_tvoc.append(random.randint(0, 1000))
-        self.data_no2.append(random.uniform(0, 10))
-        self.data_pm10.append(random.uniform(0, 1000))
-        self.data_pm25.append(random.uniform(0, 1000))
-        self.data_pm100.append(random.uniform(0, 1000))
-
-        # Updates all graphs with the new data
-        self.temp_plot.setData(self.timestamps, self.data_temp)
-        self.press_plot.setData(self.timestamps, self.data_press)
-        self.humid_plot.setData(self.timestamps, self.data_humid)
-        self.alt_plot.setData(self.timestamps, self.data_alt)
-        self.spd_plot.setData(self.timestamps, self.data_speed)
-        self.co2_plot_line.setData(self.timestamps, self.data_co2)
-        self.eco2_plot_line.setData(self.timestamps, self.data_eco2)
-        self.no2_plot_line.setData(self.timestamps, self.data_no2)
-        self.pm10_plot_line.setData(self.timestamps, self.data_pm10)
-        self.pm25_plot_line.setData(self.timestamps, self.data_pm25)
-        self.pm100_plot_line.setData(self.timestamps, self.data_pm100)
-
-        # Prints all of the appended data
-        #self.raw_console.append(self.timestamps[-1], self.data_temp[-1], self.data_humid[-1], self.data_alt[-1], self.data_press[-1], self.data_speed[-1])
-        #self.displayed_console.append(self.timestamps[-1], self.data_temp[-1], self.data_humid[-1], self.data_alt[-1], self.data_press[-1], self.data_speed[-1])
-
     # For use with base station itself
     # For this function to work it needs to be set above in qTimer.timeout
     # and also base station has to be connected to PC and
@@ -296,7 +262,8 @@ class Window(QWidget):
                 self.pm100_plot_line.setData(self.timestamps, self.data_pm100)
                 # If GPS signal is acquired add a marker in the map
                 if int(self.data_latitude[-1]) != 0:
-                    self.add_marker()
+                    #self.add_marker()
+                    pass
 
                 # Prints received data to consoles in app
                 self.raw_console.append(raw_data[-1])
@@ -354,7 +321,7 @@ class Window(QWidget):
         self.raw_console.setFixedHeight(200)
 
         # Creater a map to display GPS coordinates
-        self.map = folium.Map(location=[57.53351885176165, 25.425357529068794], zoom_start=11, control_scale=True)
+        self.map = folium.Map(location=[57, 25], zoom_start=8, control_scale=True)
         folium.LayerControl().add_to(self.map)
         self.data = io.BytesIO()
         self.map.save(self.data, close_file=False)
@@ -374,12 +341,12 @@ class Window(QWidget):
 
         # Sets y-axis labels
         self.temperature_plot.setLabel(axis="left", text="Temperature, Celsius")
-        self.pressure_plot.setLabel(axis="left", text="Pressure, kPa")
+        self.pressure_plot.setLabel(axis="left", text="Pressure, Pa")
         self.humidity_plot.setLabel(axis="left", text="Humidity, %")
         self.altitude_plot.setLabel(axis="left", text="Altitude, meters")
         self.speed_plot.setLabel(axis="left", text="Speed, km/h")
         self.co2_plot.setLabel(axis="left", text="Co2 concentration, ppm")
-        self.tvoc_plot.setLabel(axis="left", text="TVOC concentration, ppm")
+        self.tvoc_plot.setLabel(axis="left", text="TVOC concentration, ug/m^3")
         self.no2_plot.setLabel(axis="left", text="NO2 concentration, ppm")
         self.pms_plot.setLabel(axis="left", text="Fine particles, ppm")
 
@@ -495,16 +462,17 @@ def isDataOK():
     return True
 
 
+
 # Connects to serial port and reads data from it
 def serialDataFunction():
     base_station = None
     # Opens serial data port
-    base_station = serial.Serial("COM8", 9600)
+    base_station = serial.Serial("COM4", 9600)
     while True:
         try:
             # If serial connection has been lost, tries to reconnect back
             if(base_station == None):
-                base_station = serial.Serial("COM8", 9600)
+                base_station = serial.Serial("COM4", 9600)
                 print("Reconnecting")
             # Reads data from serial port
             # It blocks function from progressing untill some data has been received
@@ -519,6 +487,10 @@ def serialDataFunction():
             # is used to update data to graphs
             else:
                 raw_data.append(base_station_data)
+
+            with open(file_name, "a", newline="", encoding="UTF8") as csv_f:
+                writer = csv.writer(csv_f)
+                writer.writerow([datetime.now().strftime("%H:%M:%S"), base_station_data])
         except:
             # If something goes wrong closes port and tries again
             if(not(base_station == None)):
